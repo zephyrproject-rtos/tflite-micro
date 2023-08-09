@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,15 +16,16 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/benchmarks/micro_benchmark.h"
 #include "tensorflow/lite/micro/examples/person_detection/model_settings.h"
-#include "tensorflow/lite/micro/examples/person_detection/no_person_image_data.h"
-#include "tensorflow/lite/micro/examples/person_detection/person_detect_model_data.h"
-#include "tensorflow/lite/micro/examples/person_detection/person_image_data.h"
+#include "tensorflow/lite/micro/examples/person_detection/testdata/no_person_image_data.h"
+#include "tensorflow/lite/micro/examples/person_detection/testdata/person_image_data.h"
 #include "tensorflow/lite/micro/kernels/conv.h"
 #include "tensorflow/lite/micro/kernels/fully_connected.h"
-#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_log.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/micro/micro_utils.h"
+#include "tensorflow/lite/micro/models/person_detect_model_data.h"
 #include "tensorflow/lite/micro/system_setup.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -49,7 +50,7 @@ uint8_t benchmark_runner_buffer[sizeof(PersonDetectionBenchmarkRunner)];
 
 // Initialize benchmark runner instance explicitly to avoid global init order
 // issues on Sparkfun. Use new since static variables within a method
-// are automatically surrounded by locking, which breaks bluepill and stm32f4.
+// are automatically surrounded by locking, which breaks bluepill.
 PersonDetectionBenchmarkRunner* CreateBenchmarkRunner(MicroProfiler* profiler) {
   // We allocate PersonDetectionOpResolver from a global buffer
   // because the object's lifetime must exceed that of the
@@ -60,7 +61,7 @@ PersonDetectionBenchmarkRunner* CreateBenchmarkRunner(MicroProfiler* profiler) {
   op_resolver->AddConv2D(tflite::Register_CONV_2D_INT8REF());
   op_resolver->AddDepthwiseConv2D();
   op_resolver->AddSoftmax();
-  op_resolver->AddAveragePool2D();
+  op_resolver->AddAveragePool2D(tflite::Register_AVERAGE_POOL_2D_INT8());
   op_resolver->AddReshape();
   return new (benchmark_runner_buffer)
       PersonDetectionBenchmarkRunner(g_person_detect_model_data, op_resolver,
@@ -96,24 +97,24 @@ int main(int argc, char** argv) {
   MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::PersonDetectionNIerations(
-      reinterpret_cast<const int8_t*>(g_person_data), 1,
+      reinterpret_cast<const int8_t*>(g_person_image_data), 1,
       "WithPersonDataIterations(1)", *benchmark_runner, profiler);
   profiler.Log();
   MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::PersonDetectionNIerations(
-      reinterpret_cast<const int8_t*>(g_no_person_data), 1,
+      reinterpret_cast<const int8_t*>(g_no_person_image_data), 1,
       "NoPersonDataIterations(1)", *benchmark_runner, profiler);
   profiler.Log();
   MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::PersonDetectionNIerations(
-      reinterpret_cast<const int8_t*>(g_person_data), 10,
+      reinterpret_cast<const int8_t*>(g_person_image_data), 10,
       "WithPersonDataIterations(10)", *benchmark_runner, profiler);
   MicroPrintf("");  // null MicroPrintf serves as a newline.
 
   tflite::PersonDetectionNIerations(
-      reinterpret_cast<const int8_t*>(g_no_person_data), 10,
+      reinterpret_cast<const int8_t*>(g_no_person_image_data), 10,
       "NoPersonDataIterations(10)", *benchmark_runner, profiler);
   MicroPrintf("");  // null MicroPrintf serves as a newline.
 }

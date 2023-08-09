@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
@@ -105,7 +104,7 @@ void TestHardSwishQuantized(int size, const T* output_data,
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration = tflite::Register_HARD_SWISH();
+  const TFLMRegistration registration = tflite::Register_HARD_SWISH();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, /*builtin_data=*/nullptr);
 
@@ -141,9 +140,9 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
   // values.
   TF_LITE_MICRO_EXPECT_LE(input_min, -3.0f);
   TF_LITE_MICRO_EXPECT_GE(input_max, 3.0f);
-  const int quantized_input_negative_three = std::round(
+  const int quantized_input_negative_three = TfLiteRound(
       std::numeric_limits<T>::min() + (-3.0f - input_min) / input_scale);
-  const int quantized_input_positive_three = std::round(
+  const int quantized_input_positive_three = TfLiteRound(
       std::numeric_limits<T>::min() + (3.0f - input_min) / input_scale);
 
   for (int i = quantized_input_negative_three;
@@ -183,7 +182,7 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration = tflite::Register_HARD_SWISH();
+  const TFLMRegistration registration = tflite::Register_HARD_SWISH();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, /*builtin_data=*/nullptr);
 
@@ -234,7 +233,7 @@ void TestHardSwishFloat(const int size, float* output_data,
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration = tflite::Register_HARD_SWISH();
+  const TFLMRegistration registration = tflite::Register_HARD_SWISH();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, /*builtin_data=*/nullptr);
 

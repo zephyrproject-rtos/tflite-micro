@@ -28,27 +28,18 @@ struct XtensaDepthwiseConvOpData {
 #if defined(HIFI4) || defined(HIFI5)
   int scratch_tensor_index;
 #endif  // defined(HIFI4) || defined(HIFI5)
+
+#if defined(VISION_P6)
+  int8_t* reorder_coefficient_bias;  // buffers used to keep reordered coeff and
+                                     // biases.
+  uint32_t reorder_coefficient_bias_size;
+  int8_t* per_channel_output_shift_int8;
+  uint8_t* p_context;  // persistent lib context for this instance saved here
+  uint32_t context_size;
+#endif  // VISION_P6
 };
 
-#if defined(HIFIMINI)
-void DepthwiseConvEvalHifiMini(
-    const DepthwiseParams& params, const int32_t* output_multiplier,
-    const int32_t* output_shift, const RuntimeShape& input_shape,
-    const int8_t* input_data, const RuntimeShape& filter_shape,
-    const int8_t* filter_data, const RuntimeShape& bias_shape,
-    const int32_t* bias_data, const RuntimeShape& output_shape,
-    int8_t* output_data);
-
-inline void DepthwiseConv4x32MatchingInputAndFilterHifiMini(
-    const int input_offset, const int output_offset,
-    const int quantized_activation_min, const int quantized_activation_max,
-    const int32_t* output_multiplier, const int32_t* output_shift,
-    const RuntimeShape& input_shape, const int8_t* input_data,
-    const RuntimeShape& filter_shape, const int8_t* filter_data,
-    const RuntimeShape& bias_shape, const int32_t* bias_data,
-    const RuntimeShape& output_shape, int8_t* output_data);
-
-#elif defined(HIFI4) || defined(HIFI5)
+#if defined(HIFI4) || defined(HIFI5)
 TfLiteStatus DepthwiseConvPrepareHifi(TfLiteContext* context, TfLiteNode* node);
 
 TfLiteStatus DepthwiseConvEvalHifi(TfLiteContext* context, TfLiteNode* node,
@@ -61,7 +52,22 @@ TfLiteStatus DepthwiseConvEvalHifi(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus DepthwiseConvReferenceEvalInt8(TfLiteContext* context,
                                             TfLiteNode* node);
-#endif
+#endif  // defined(HIFI4) || defined(HIFI5)
+
+#if defined(VISION_P6)
+
+TfLiteStatus DepthwiseConvPrepareVision(TfLiteContext* context,
+                                        TfLiteNode* node);
+
+TfLiteStatus DepthwiseConvEvalVision(TfLiteContext* context, TfLiteNode* node,
+                                     const TfLiteDepthwiseConvParams& params,
+                                     const XtensaDepthwiseConvOpData& data,
+                                     const TfLiteEvalTensor* input,
+                                     const TfLiteEvalTensor* filter,
+                                     const TfLiteEvalTensor* bias,
+                                     TfLiteEvalTensor* output);
+
+#endif  // VISION_P6
 
 }  // namespace tflite
 

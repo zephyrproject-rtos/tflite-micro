@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,17 +19,19 @@ limitations under the License.
 #include <cstdint>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
+#include "tensorflow/lite/micro/micro_context.h"
 #include "tensorflow/lite/micro/micro_graph.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
-#include "tensorflow/lite/micro/micro_profiler.h"
+#include "tensorflow/lite/micro/micro_profiler_interface.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
-// Copied from tensorflow/lite/version.h to avoid a dependency chain into
+/// Copied from tensorflow/lite/version.h to avoid a dependency chain into
 // tensorflow/core.
 #define TFLITE_SCHEMA_VERSION (3)
 
@@ -37,17 +39,18 @@ namespace tflite {
 
 class MicroInterpreter {
  public:
-  // The lifetime of the model, op resolver, tensor arena, error reporter and
-  // profiler must be at least as long as that of the interpreter object, since
-  // the interpreter may need to access them at any time. This means that you
-  // should usually create them with the same scope as each other, for example
-  // having them all allocated on the stack as local variables through a
-  // top-level function. The interpreter doesn't do any deallocation of any of
-  // the pointed-to objects, ownership remains with the caller.
+  // The lifetime of the model, op resolver, tensor arena, error reporter,
+  // resource variables, and profiler must be at least as long as that of the
+  // interpreter object, since the interpreter may need to access them at any
+  // time. This means that you should usually create them with the same scope as
+  // each other, for example having them all allocated on the stack as local
+  // variables through a top-level function. The interpreter doesn't do any
+  // deallocation of any of the pointed-to objects, ownership remains with the
+  // caller.
   MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
                    uint8_t* tensor_arena, size_t tensor_arena_size,
-                   ErrorReporter* error_reporter,
-                   MicroProfiler* profiler = nullptr);
+                   MicroResourceVariables* resource_variables = nullptr,
+                   MicroProfilerInterface* profiler = nullptr);
 
   // Create an interpreter instance using an existing MicroAllocator instance.
   // This constructor should be used when creating an allocator that needs to
@@ -55,8 +58,9 @@ class MicroInterpreter {
   // allocations inside the interpreter. The lifetime of the allocator must be
   // as long as that of the interpreter object.
   MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
-                   MicroAllocator* allocator, ErrorReporter* error_reporter,
-                   MicroProfiler* profiler = nullptr);
+                   MicroAllocator* allocator,
+                   MicroResourceVariables* resource_variables = nullptr,
+                   MicroProfilerInterface* profiler = nullptr);
 
   ~MicroInterpreter();
 
@@ -68,6 +72,12 @@ class MicroInterpreter {
   // values other than kTfLiteOk and kTfLiteError.
   // TODO(b/149795762): Add this to the TfLiteStatus enum.
   TfLiteStatus Invoke();
+
+  // This is the recommended API for an application to pass an external payload
+  // pointer as an external context to kernels. The life time of the payload
+  // pointer should be at least as long as this interpreter. TFLM supports only
+  // one external context.
+  TfLiteStatus SetMicroExternalContext(void* external_context_payload);
 
   TfLiteTensor* input(size_t index);
   size_t inputs_size() const {
@@ -105,8 +115,9 @@ class MicroInterpreter {
     return nullptr;
   }
 
-  // Reset all variable tensors to the default value.
-  TfLiteStatus ResetVariableTensors();
+  // Reset the state to be what you would expect when the interpreter is first
+  // created. i.e. after Init and Prepare is called for the very first time.
+  TfLiteStatus Reset();
 
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
@@ -131,29 +142,13 @@ class MicroInterpreter {
  private:
   // TODO(b/158263161): Consider switching to Create() function to enable better
   // error reporting during initialization.
-  void Init(MicroProfiler* profiler);
+  void Init(MicroProfilerInterface* profiler);
 
   // Gets the current subgraph index used from within context methods.
   int get_subgraph_index() { return graph_.GetCurrentSubgraphIndex(); }
 
-  // Static functions that are bound to the TfLiteContext instance:
-  static void* AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes);
-  static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
-                                                  size_t bytes,
-                                                  int* buffer_idx);
-  static void* GetScratchBuffer(TfLiteContext* ctx, int buffer_idx);
-  static void ReportOpError(struct TfLiteContext* context, const char* format,
-                            ...);
-  static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
-                                 int tensor_idx);
-  static TfLiteEvalTensor* GetEvalTensor(const struct TfLiteContext* context,
-                                         int tensor_idx);
-  static TfLiteStatus GetGraph(struct TfLiteContext* context,
-                               TfLiteIntArray** args);
-
   const Model* model_;
   const MicroOpResolver& op_resolver_;
-  ErrorReporter* error_reporter_;
   TfLiteContext context_ = {};
   MicroAllocator& allocator_;
   MicroGraph graph_;
@@ -167,6 +162,8 @@ class MicroInterpreter {
   // from TfLiteEvalTensor.
   TfLiteTensor** input_tensors_;
   TfLiteTensor** output_tensors_;
+
+  MicroContext micro_context_;
 };
 
 }  // namespace tflite

@@ -20,14 +20,15 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/mli_function_specializations.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/mli_slicers.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/mli_tf_utils.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/scratch_buf_mgr.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/scratch_buffers.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
-namespace pooling {
 
 namespace {
 
@@ -48,6 +49,10 @@ struct OpData {
   mutable ops::micro::MliTensorInterface mli_in;
   mutable ops::micro::MliTensorInterface mli_out;
   mli_pool_cfg* cfg;
+
+  // Pointer to the mli convolution function.
+  pooling_func_ptr p_mli_krn_avepool_hwc_sa8;
+  pooling_func_ptr p_mli_krn_maxpool_hwc_sa8;
 };
 
 enum MliPoolingType { AveragePooling = 0, MaxPooling = 1 };
@@ -88,9 +93,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = static_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  MicroContext* micro_context = GetMicroContext(context);
+
+  TfLiteTensor* input =
+      micro_context->AllocateTempInputTensor(node, kInputTensor);
   TF_LITE_ENSURE(context, input != nullptr);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output =
+      micro_context->AllocateTempOutputTensor(node, kOutputTensor);
   TF_LITE_ENSURE(context, output != nullptr);
 
   data->is_mli_applicable = IsMliApplicable(context, input, params);
@@ -100,7 +109,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (input->type == kTfLiteFloat32) {
     CalculateActivationRange(params->activation, &data->activation_min_f32,
                              &data->activation_max_f32);
-  } else if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
+  } else if (input->type == kTfLiteInt8) {
     CalculateActivationRangeQuantized(context, params->activation, output,
                                       &data->activation_min,
                                       &data->activation_max);
@@ -135,7 +144,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       data->cfg->padding_bottom =
           data->padding.height + data->padding.height_offset;
     }
+
+    // Choose pooling mli specialized functions.
+    data->p_mli_krn_avepool_hwc_sa8 = mli_krn_avepool(data->cfg);
+    data->p_mli_krn_maxpool_hwc_sa8 = mli_krn_maxpool(data->cfg);
   }
+
+  micro_context->DeallocateTempTfLiteTensor(input);
+  micro_context->DeallocateTempTfLiteTensor(output);
   return kTfLiteOk;
 }
 
@@ -161,9 +177,8 @@ void AverageEvalFloat(TfLiteContext* context, const TfLiteNode* node,
                              tflite::micro::GetTensorShape(output),
                              tflite::micro::GetTensorData<float>(output));
 #else
-  TF_LITE_KERNEL_LOG(context,
-                     "Type %s (%d) is not supported by ARC MLI Library.",
-                     TfLiteTypeGetName(input->type), input->type);
+  MicroPrintf("Type %s (%d) is not supported by ARC MLI Library.",
+              TfLiteTypeGetName(input->type), input->type);
 #endif
 }
 
@@ -225,14 +240,21 @@ TfLiteStatus EvalMli(TfLiteContext* context, const TfLitePoolParams* params,
   mli_tensor* out_ptr = out_is_local ? out_slice.Sub() : &out_local;
 
   while (!out_slice.Done()) {
+    if (!out_is_local) {
+      ops::micro::PrepareLocalTensor(out_slice.Sub(), &out_local);
+      ops::micro::PrepareLocalTensor(in_slice.Sub(), &in_local);
+    }
     cfg_local.padding_top = in_slice.GetPaddingPre();
     cfg_local.padding_bottom = in_slice.GetPaddingPost();
 
     mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
-    if (pooling_type == AveragePooling)
-      mli_krn_avepool_hwc_sa8(in_ptr, &cfg_local, out_ptr);
-    else if (pooling_type == MaxPooling)
-      mli_krn_maxpool_hwc_sa8(in_ptr, &cfg_local, out_ptr);
+    if (pooling_type == AveragePooling) {
+      TFLITE_DCHECK(data.p_mli_krn_avepool_hwc_sa8 != nullptr);
+      data.p_mli_krn_avepool_hwc_sa8(in_ptr, &cfg_local, out_ptr);
+    } else if (pooling_type == MaxPooling) {
+      TFLITE_DCHECK(data.p_mli_krn_maxpool_hwc_sa8 != nullptr);
+      data.p_mli_krn_maxpool_hwc_sa8(in_ptr, &cfg_local, out_ptr);
+    }
     mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
 
     in_slice.Next();
@@ -246,7 +268,7 @@ void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
                           const TfLiteEvalTensor* input,
                           TfLiteEvalTensor* output) {
 #if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
-  TFLITE_DCHECK(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
+  TFLITE_DCHECK(input->type == kTfLiteInt8);
 
   PoolParams op_params;
   op_params.stride_height = params->stride_height;
@@ -258,22 +280,14 @@ void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
   op_params.quantized_activation_min = data.activation_min;
   op_params.quantized_activation_max = data.activation_max;
 
-  if (input->type == kTfLiteUInt8) {
-    reference_ops::AveragePool(op_params, tflite::micro::GetTensorShape(input),
-                               tflite::micro::GetTensorData<uint8_t>(input),
-                               tflite::micro::GetTensorShape(output),
-                               tflite::micro::GetTensorData<uint8_t>(output));
-  } else {
-    reference_integer_ops::AveragePool(
-        op_params, tflite::micro::GetTensorShape(input),
-        tflite::micro::GetTensorData<int8_t>(input),
-        tflite::micro::GetTensorShape(output),
-        tflite::micro::GetTensorData<int8_t>(output));
-  }
+  reference_integer_ops::AveragePool(
+      op_params, tflite::micro::GetTensorShape(input),
+      tflite::micro::GetTensorData<int8_t>(input),
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<int8_t>(output));
 #else
-  TF_LITE_KERNEL_LOG(context,
-                     "Type %s (%d) is not supported by ARC MLI Library.",
-                     TfLiteTypeGetName(input->type), input->type);
+  MicroPrintf("Type %s (%d) is not supported by ARC MLI Library.",
+              TfLiteTypeGetName(input->type), input->type);
 #endif
 }
 
@@ -295,8 +309,8 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
                          tflite::micro::GetTensorShape(output),
                          tflite::micro::GetTensorData<float>(output));
 #else
-  TF_LITE_KERNEL_LOG(
-      context,
+  MicroPrintf(
+
       "Node configuration or type %s (%d) is not supported by ARC MLI Library.",
       TfLiteTypeGetName(input->type), input->type);
 #endif
@@ -306,6 +320,7 @@ void MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       TfLitePoolParams* params, const OpData& data,
                       const TfLiteEvalTensor* input, TfLiteEvalTensor* output) {
 #if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
+  TFLITE_DCHECK(input->type == kTfLiteInt8);
   tflite::PoolParams op_params;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
@@ -316,26 +331,18 @@ void MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data.activation_min;
   op_params.quantized_activation_max = data.activation_max;
 
-  if (input->type == kTfLiteUInt8) {
-    reference_ops::MaxPool(op_params, tflite::micro::GetTensorShape(input),
-                           tflite::micro::GetTensorData<uint8_t>(input),
-                           tflite::micro::GetTensorShape(output),
-                           tflite::micro::GetTensorData<uint8_t>(output));
-  } else {
-    reference_integer_ops::MaxPool(
-        op_params, tflite::micro::GetTensorShape(input),
-        tflite::micro::GetTensorData<int8_t>(input),
-        tflite::micro::GetTensorShape(output),
-        tflite::micro::GetTensorData<int8_t>(output));
-  }
+  reference_integer_ops::MaxPool(op_params,
+                                 tflite::micro::GetTensorShape(input),
+                                 tflite::micro::GetTensorData<int8_t>(input),
+                                 tflite::micro::GetTensorShape(output),
+                                 tflite::micro::GetTensorData<int8_t>(output));
 #else
-  TF_LITE_KERNEL_LOG(
-      context,
+  MicroPrintf(
+
       "Node configuration or type %s (%d) is not supported by ARC MLI Library.",
       TfLiteTypeGetName(input->type), input->type);
 #endif
 }
-}  // namespace
 
 TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->builtin_data != nullptr);
@@ -354,7 +361,6 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       AverageEvalFloat(context, node, params, data, input, output);
       break;
-    case kTfLiteUInt8:
     case kTfLiteInt8:
       if (data.is_mli_applicable) {
         EvalMli(context, params, data, input, output, AveragePooling);
@@ -363,8 +369,8 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      TF_LITE_KERNEL_LOG(context, "Input type %s is not currently supported",
-                         TfLiteTypeGetName(input->type));
+      MicroPrintf("Input type %s is not currently supported",
+                  TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -385,7 +391,6 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       MaxEvalFloat(context, node, params, data, input, output);
       break;
-    case kTfLiteUInt8:
     case kTfLiteInt8:
       if (data.is_mli_applicable) {
         EvalMli(context, params, data, input, output, MaxPooling);
@@ -394,35 +399,21 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
-                         TfLiteTypeGetName(input->type));
+      MicroPrintf("Type %s not currently supported.",
+                  TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
 }
 
-}  // namespace pooling
+}  // namespace
 
-TfLiteRegistration Register_AVERAGE_POOL_2D() {
-  return {/*init=*/pooling::Init,
-          /*free=*/nullptr,
-          /*prepare=*/pooling::Prepare,
-          /*invoke=*/pooling::AverageEval,
-          /*profiling_string=*/nullptr,
-          /*builtin_code=*/0,
-          /*custom_name=*/nullptr,
-          /*version=*/0};
+TFLMRegistration Register_AVERAGE_POOL_2D() {
+  return tflite::micro::RegisterOp(Init, Prepare, AverageEval);
 }
 
-TfLiteRegistration Register_MAX_POOL_2D() {
-  return {/*init=*/pooling::Init,
-          /*free=*/nullptr,
-          /*prepare=*/pooling::Prepare,
-          /*invoke=*/pooling::MaxEval,
-          /*profiling_string=*/nullptr,
-          /*builtin_code=*/0,
-          /*custom_name=*/nullptr,
-          /*version=*/0};
+TFLMRegistration Register_MAX_POOL_2D() {
+  return tflite::micro::RegisterOp(Init, Prepare, MaxEval);
 }
 
 }  // namespace tflite

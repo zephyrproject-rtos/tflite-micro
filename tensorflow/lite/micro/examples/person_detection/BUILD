@@ -1,7 +1,10 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers Vision Example.
+load("//tensorflow/lite/micro:build_def.bzl", "generate_cc_arrays")
+
 package(
     default_visibility = ["//visibility:public"],
+    # Disabling layering_check because of http://b/177257332
     features = ["-layering_check"],
     licenses = ["notice"],
 )
@@ -16,31 +19,49 @@ cc_library(
     ],
 )
 
+generate_cc_arrays(
+    name = "generated_no_person_bmp_cc",
+    src = "testdata/no_person.bmp",
+    out = "testdata/no_person_image_data.cc",
+)
+
+generate_cc_arrays(
+    name = "generated_no_person_bmp_hdr",
+    src = "testdata/no_person.bmp",
+    out = "testdata/no_person_image_data.h",
+)
+
+generate_cc_arrays(
+    name = "generated_person_bmp_cc",
+    src = "testdata/person.bmp",
+    out = "testdata/person_image_data.cc",
+)
+
+generate_cc_arrays(
+    name = "generated_person_bmp_hdr",
+    src = "testdata/person.bmp",
+    out = "testdata/person_image_data.h",
+)
+
 cc_library(
     name = "person_detect_model_data",
     srcs = [
-        "@person_detect_data//:person_detect_model_data",
+        "//tensorflow/lite/micro/models:generated_person_detect_model_cc",
     ],
     hdrs = [
-        "person_detect_model_data.h",
-    ],
-    tags = [
-        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+        "//tensorflow/lite/micro/models:generated_person_detect_model_hdr",
     ],
 )
 
 cc_library(
     name = "simple_images_test_data",
     srcs = [
-        "no_person_image_data.cc",
-        "person_image_data.cc",
+        ":generated_no_person_bmp_cc",
+        ":generated_person_bmp_cc",
     ],
     hdrs = [
-        "no_person_image_data.h",
-        "person_image_data.h",
-    ],
-    tags = [
-        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+        ":generated_no_person_bmp_hdr",
+        ":generated_person_bmp_hdr",
     ],
     deps = [
         ":model_settings",
@@ -50,16 +71,13 @@ cc_library(
 cc_test(
     name = "person_detection_test",
     srcs = ["person_detection_test.cc"],
-    tags = [
-        "no_oss",  # TODO(b/174680668): Exclude from OSS.
-    ],
     deps = [
         ":model_settings",
         ":person_detect_model_data",
         ":simple_images_test_data",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/schema:schema_fbs",
@@ -77,7 +95,6 @@ cc_library(
     deps = [
         ":model_settings",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_error_reporter",
     ],
 )
 
@@ -90,7 +107,6 @@ cc_test(
         ":image_provider",
         ":model_settings",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -105,7 +121,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_error_reporter",
+        "//tensorflow/lite/micro:micro_log",
     ],
 )
 
@@ -127,16 +143,13 @@ cc_binary(
         "main_functions.cc",
         "main_functions.h",
     ],
-    tags = [
-        "no_oss",  # TODO(b/174680668): Exclude from OSS.
-    ],
     deps = [
         ":detection_responder",
         ":image_provider",
         ":model_settings",
         ":person_detect_model_data",
-        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/schema:schema_fbs",

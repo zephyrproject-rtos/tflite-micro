@@ -1,16 +1,20 @@
 NETWORK_TESTER_TEST_SRCS := \
-tensorflow/lite/micro/examples/network_tester/network_tester_test.cc
+$(TENSORFLOW_ROOT)tensorflow/lite/micro/examples/network_tester/network_tester_test.cc
+
+NETWORK_TESTER_GENERATOR_INPUTS:=
 
 ifeq ($(CO_PROCESSOR),ethos_u)
   NETWORK_TESTER_TEST_SRCS += \
-    $(MAKEFILE_DIR)/downloads/person_model_int8/person_detect_model_data_vela.cc \
-    $(MAKEFILE_DIR)/downloads/person_model_int8/person_image_data.cc
+    $(GENERATED_SRCS_DIR)$(TENSORFLOW_ROOT)tensorflow/lite/micro/models/person_detect_model_data_vela.cc
+
+  NETWORK_TESTER_GENERATOR_INPUTS := \
+    $(TENSORFLOW_ROOT)tensorflow/lite/micro/examples/person_detection/testdata/person.bmp
 endif
 
 NETWORK_TESTER_TEST_HDRS := \
-tensorflow/lite/micro/examples/network_tester/network_model.h \
-tensorflow/lite/micro/examples/network_tester/input_data.h \
-tensorflow/lite/micro/examples/network_tester/expected_output_data.h
+$(TENSORFLOW_ROOT)tensorflow/lite/micro/examples/network_tester/network_model.h \
+$(TENSORFLOW_ROOT)tensorflow/lite/micro/examples/network_tester/input_data.h \
+$(TENSORFLOW_ROOT)tensorflow/lite/micro/examples/network_tester/expected_output_data.h
 
 #Find any platform - specific rules for this example.
 include $(wildcard tensorflow/lite/micro/examples/network_tester/*/Makefile.inc)
@@ -45,4 +49,4 @@ endif
 
 # Builds a standalone object recognition binary.
 $(eval $(call microlite_test,network_tester_test,\
-$(NETWORK_TESTER_TEST_SRCS),$(NETWORK_TESTER_TEST_HDRS)))
+$(NETWORK_TESTER_TEST_SRCS),$(NETWORK_TESTER_TEST_HDRS),$(NETWORK_TESTER_GENERATOR_INPUTS)))

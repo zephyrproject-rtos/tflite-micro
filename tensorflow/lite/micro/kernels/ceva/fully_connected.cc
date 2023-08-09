@@ -25,7 +25,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/ceva/ceva_tflm_lib.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-//#define MCPS_MEASUREMENT
+#include "tensorflow/lite/micro/micro_log.h"
+
+// #define MCPS_MEASUREMENT
 #ifdef MCPS_MEASUREMENT
 #include "tensorflow/lite/micro/kernels/ceva/mcps_macros.h"
 #endif
@@ -55,12 +57,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
 
   const TfLiteTensor* input =
-      GetInput(context, node, kFullyConnectedInputTensor);
+      AllocateTempInputTensor(node, kFullyConnectedInputTensor);
   const TfLiteTensor* filter =
-      GetInput(context, node, kFullyConnectedWeightsTensor);
+      AllocateTempInputTensor(node, kFullyConnectedWeightsTensor);
   const TfLiteTensor* bias =
-      GetOptionalInputTensor(context, node, kFullyConnectedBiasTensor);
-  TfLiteTensor* output = GetOutput(context, node, kFullyConnectedOutputTensor);
+      AllocateTempInputTensor(context, node, kFullyConnectedBiasTensor);
+  TfLiteTensor* output =
+      AllocateTempOutputTensor(node, kFullyConnectedOutputTensor);
 
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
@@ -70,12 +73,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                        input, filter, bias, output, data);
 }
 
-TfLiteStatus EvalQuantizedInt8CEVA(TfLiteContext* context, TfLiteNode* node,
-                                   const OpDataFullyConnected& data,
-                                   const TfLiteEvalTensor* input,
-                                   const TfLiteEvalTensor* filter,
-                                   const TfLiteEvalTensor* bias,
-                                   TfLiteEvalTensor* output) {
+__attribute__((optnone)) TfLiteStatus EvalQuantizedInt8CEVA(
+    TfLiteContext* context, TfLiteNode* node, const OpDataFullyConnected& data,
+    const TfLiteEvalTensor* input, const TfLiteEvalTensor* filter,
+    const TfLiteEvalTensor* bias, TfLiteEvalTensor* output) {
   tflite::FullyConnectedParams op_params = FullyConnectedParamsQuantized(data);
 
   int input_shape_dimensions_count =
@@ -112,9 +113,8 @@ TfLiteStatus EvalQuantizedInt8CEVA(TfLiteContext* context, TfLiteNode* node,
   int sizeof_scratch_required = output_shape_dims_data[1];
 
   if (sizeof_scratch_required > CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL) {
-    TF_LITE_KERNEL_LOG(context, "Scratch size (%d) less that required (%d)",
-                       CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL,
-                       sizeof_scratch_required);
+    MicroPrintf("Scratch size (%d) less that required (%d)",
+                CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, sizeof_scratch_required);
     return kTfLiteError;
   }
 
@@ -227,8 +227,8 @@ TfLiteStatus EvalCEVA(TfLiteContext* context, TfLiteNode* node) {
                                    output);
 
     default:
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(input->type), input->type);
+      MicroPrintf("Type %s (%d) not supported.", TfLiteTypeGetName(input->type),
+                  input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -243,15 +243,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace
 
-TfLiteRegistration Register_FULLY_CONNECTED() {
-  return {/*init=*/Init,
-          /*free=*/nullptr,
-          /*prepare=*/Prepare,
-          /*invoke=*/Eval,
-          /*profiling_string=*/nullptr,
-          /*builtin_code=*/0,
-          /*custom_name=*/nullptr,
-          /*version=*/0};
+TFLMRegistration Register_FULLY_CONNECTED() {
+  return tflite::micro::RegisterOp(Init, Prepare, Eval);
 }
 
 }  // namespace tflite

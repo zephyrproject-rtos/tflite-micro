@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
@@ -24,7 +23,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-// used to set the quantization parameters for the int8_t and uint8_t tests
+// used to set the quantization parameters for the int8_t and tests
 constexpr float kInputMin = -2.0;
 constexpr float kInputMax = 2.0;
 constexpr float kOutputMin = -1.0;
@@ -75,8 +74,7 @@ void TestL2Normalization(int* input_dims_data, const T* input_data,
       .activation = kTfLiteActNone,
   };
 
-  const TfLiteRegistration registration =
-      ops::micro::Register_L2_NORMALIZATION();
+  const TFLMRegistration registration = tflite::Register_L2_NORMALIZATION();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
                              reinterpret_cast<void*>(&builtin_data));
@@ -149,30 +147,6 @@ TF_LITE_MICRO_TEST(MultipleBatchFloatTest) {
       input_dims, input_data, expected_output_data, output_data);
 }
 
-TF_LITE_MICRO_TEST(ZerosVectorUint8Test) {
-  int input_dims[] = {4, 1, 1, 1, 6};
-  constexpr int data_length = 6;
-  const uint8_t input_data[data_length] = {127, 127, 127, 127, 127, 127};
-  const uint8_t expected_output[data_length] = {128, 128, 128, 128, 128, 128};
-  uint8_t output_data[data_length];
-
-  tflite::testing::TestL2Normalization<uint8_t>(input_dims, input_data,
-                                                expected_output, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleUint8Test) {
-  int input_dims[] = {4, 1, 1, 1, 6};
-  constexpr int data_length = 6;
-  const uint8_t input_data[data_length] = {57, 165, 172, 204, 82, 133};
-  const uint8_t expected_output[data_length] = {
-      58, 166, 173, 205, 83, 134,
-  };
-  uint8_t output_data[data_length];
-
-  tflite::testing::TestL2Normalization<uint8_t>(input_dims, input_data,
-                                                expected_output, output_data);
-}
-
 TF_LITE_MICRO_TEST(SimpleInt8Test) {
   int input_dims[] = {4, 1, 1, 1, 6};
   constexpr int data_length = 6;
@@ -193,25 +167,6 @@ TF_LITE_MICRO_TEST(ZerosVectorInt8Test) {
 
   tflite::testing::TestL2Normalization<int8_t>(input_dims, input_data,
                                                expected_output, output_data);
-}
-
-TF_LITE_MICRO_TEST(MultipleBatchUint8Test) {
-  int input_dims[] = {2, 3, 6};
-  constexpr int data_length = 18;
-  const uint8_t input_data[data_length] = {
-      57, 165, 172, 204, 82, 133,  // batch 1
-      57, 165, 172, 204, 82, 133,  // batch 2
-      57, 165, 172, 204, 82, 133,  // batch 3
-  };
-  const uint8_t expected_output[data_length] = {
-      58, 166, 173, 205, 83, 134,  // batch 1
-      58, 166, 173, 205, 83, 134,  // batch 2
-      58, 166, 173, 205, 83, 134,  // batch 3
-  };
-  uint8_t output_data[data_length];
-
-  tflite::testing::TestL2Normalization<uint8_t>(input_dims, input_data,
-                                                expected_output, output_data);
 }
 
 TF_LITE_MICRO_TEST(MultipleBatchInt8Test) {

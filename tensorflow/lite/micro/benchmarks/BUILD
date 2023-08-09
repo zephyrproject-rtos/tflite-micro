@@ -1,4 +1,7 @@
+# Description:
+#   TensorFlow Lite microcontroller benchmarks.
 package(
+    # Disabling layering_check because of http://b/177257332
     features = ["-layering_check"],
     licenses = ["notice"],
 )
@@ -17,8 +20,9 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
-        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_log",
+        "//tensorflow/lite/micro:micro_resource_variable",
         "//tensorflow/lite/micro:micro_time",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:recording_allocators",
@@ -28,10 +32,10 @@ cc_library(
 cc_library(
     name = "keyword_scrambled_model_data",
     srcs = [
-        "keyword_scrambled_model_data.cc",
+        "//tensorflow/lite/micro/models:generated_keyword_scrambled_model_cc",
     ],
     hdrs = [
-        "keyword_scrambled_model_data.h",
+        "//tensorflow/lite/micro/models:generated_keyword_scrambled_model_hdr",
     ],
     visibility = [
         ":micro_top_level",
@@ -45,8 +49,36 @@ cc_binary(
         ":keyword_scrambled_model_data",
         ":micro_benchmark",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_log",
+        "//tensorflow/lite/micro:micro_profiler",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:system_setup",
+    ],
+)
+
+cc_library(
+    name = "keyword_scrambled_8bit_model_data",
+    srcs = [
+        "//tensorflow/lite/micro/models:generated_keyword_scrambled_8bit_model_cc",
+    ],
+    hdrs = [
+        "//tensorflow/lite/micro/models:generated_keyword_scrambled_8bit_model_hdr",
+    ],
+    visibility = [
+        ":micro_top_level",
+    ],
+)
+
+cc_binary(
+    name = "keyword_benchmark_8bit",
+    srcs = ["keyword_benchmark_8bit.cc"],
+    deps = [
+        ":keyword_scrambled_8bit_model_data",
+        ":micro_benchmark",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:system_setup",
     ],
@@ -55,14 +87,11 @@ cc_binary(
 cc_binary(
     name = "person_detection_benchmark",
     srcs = ["person_detection_benchmark.cc"],
-    tags = [
-        "no_oss",  # TODO(b/174680668): Exclude from OSS.
-    ],
     deps = [
         ":micro_benchmark",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_log",
         "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:system_setup",

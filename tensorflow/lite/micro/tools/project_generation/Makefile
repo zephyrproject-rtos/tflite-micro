@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,13 +19,18 @@
 # TFLM tree created with the project generation script:
 # make -j8 examples
 
-CXX := clang++
-CXXFLAGS := \
-  -std=c++11
+BUILD_TYPE :=
 
+COMMON_FLAGS := \
+  -DTF_LITE_STATIC_MEMORY \
+  -fno-unwind-tables \
+  -ffunction-sections \
+  -fdata-sections \
+  -fmessage-length=0
+
+CXX := clang++
 CC := clang
-CCFLAGS := \
-  -std=c11
+AR := ar
 
 INCLUDES := \
   -I. \
@@ -35,7 +40,48 @@ INCLUDES := \
   -I./third_party/kissfft/tools \
   -I./third_party/ruy
 
-AR := ar
+ifneq ($(TENSORFLOW_ROOT),)
+  INCLUDES += -I$(TENSORFLOW_ROOT)
+endif
+
+ifneq ($(EXTERNAL_DIR),)
+  INCLUDES += -I$(EXTERNAL_DIR)
+endif
+
+ifeq ($(BUILD_TYPE), cmsis_nn)
+  CXX := arm-none-eabi-g++
+  CC := arm-none-eabi-gcc
+  AR := arm-none-eabi-ar
+
+  INCLUDES += \
+    -I./third_party/cmsis \
+    -I./third_party/cmsis_nn \
+    -I./third_party/cmsis_nn/Include \
+    -I./third_party/cmsis/CMSIS/Core/Include
+
+  COMMON_FLAGS += \
+    -DTF_LITE_MCU_DEBUG_LOG \
+    -DPROJECT_GENERATION \
+    -mthumb \
+    -mlittle-endian \
+    -funsigned-char \
+    -fomit-frame-pointer \
+    -MD \
+    -DCMSIS_NN
+
+endif
+
+CXXFLAGS := \
+  -std=c++11 \
+  -fno-rtti \
+  -fno-exceptions \
+  -fno-threadsafe-statics \
+  $(COMMON_FLAGS)
+
+CCFLAGS := \
+  -std=c11 \
+  $(COMMON_FLAGS)
+
 ARFLAGS := -r
 
 GENDIR := gen
@@ -43,7 +89,7 @@ OBJDIR := $(GENDIR)/obj
 BINDIR := $(GENDIR)/bin
 LIB := $(GENDIR)/libtflm.a
 
-TFLM_CC_SRCS := $(shell find tensorflow -name "*.cc" -o -name "*.c")
+TFLM_CC_SRCS := $(shell find $(TENSORFLOW_ROOT)tensorflow -name "*.cc" -o -name "*.c")
 OBJS := $(addprefix $(OBJDIR)/, $(patsubst %.c,%.o,$(patsubst %.cc,%.o,$(TFLM_CC_SRCS))))
 
 $(OBJDIR)/%.o: %.cc
@@ -63,18 +109,17 @@ clean:
 
 libtflm: $(LIB)
 
+HELLO_WORLD_SRCS := $(wildcard examples/hello_world/*.cc)
+HELLO_WORLD_SRCS += $(wildcard examples/hello_world/models/*.cc)
+HELLO_WORLD_INCLUDES := $(INCLUDES) -I./examples/hello_world
+
 hello_world: libtflm
 	@mkdir -p $(BINDIR)
-	$(CXX) $(CXXFLAGS) $(wildcard examples/hello_world/*.cc) $(INCLUDES) $(LIB) -o $(BINDIR)/$@
-
-magic_wand: libtflm
-	@mkdir -p $(BINDIR)
-	$(CXX) $(CXXFLAGS) $(wildcard examples/magic_wand/*.cc) $(INCLUDES) $(LIB) -o $(BINDIR)/$@
+	$(CXX) $(CXXFLAGS) $(HELLO_WORLD_SRCS) $(HELLO_WORLD_INCLUDES) $(LIB) -o $(BINDIR)/$@
 
 MICRO_SPEECH_SRCS := $(wildcard examples/micro_speech/*.cc)
 MICRO_SPEECH_SRCS += $(wildcard examples/micro_speech/*/*.cc)
-MICRO_SPEECH_THIRD_PARTY_SRCS := $(wildcard third_party/kissfft/*.c)
-MICRO_SPEECH_THIRD_PARTY_SRCS += $(wildcard third_party/kissfft/*/*.c)
+MICRO_SPEECH_THIRD_PARTY_SRCS :=
 MICRO_SPEECH_INCLUDES := $(INCLUDES) -I./examples/micro_speech
 
 micro_speech: libtflm
@@ -89,4 +134,4 @@ person_detection: libtflm
 	@mkdir -p $(BINDIR)
 	$(CXX) $(CXXFLAGS) $(PERSON_DETECTION_SRCS) $(PERSON_DETECTION_THIRD_PARTY_SRCS) $(PERSON_DETECTION_INCLUDES) $(LIB) -o $(BINDIR)/$@
 
-examples: hello_world magic_wand micro_speech person_detection
+examples: hello_world micro_speech person_detection

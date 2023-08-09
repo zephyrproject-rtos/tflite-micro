@@ -1,67 +1,41 @@
 <!-- mdformat off(b/169948621#comment2) -->
 
 # Info
-CMSIS-NN is a library containing kernel optimizations for Arm(R) Cortex(TM)-M
+CMSIS-NN is a library containing kernel optimizations for Arm(R) Cortex(R)-M
 processors. To use CMSIS-NN optimized kernels instead of reference kernels, add
 `OPTIMIZED_KERNEL_DIR=cmsis_nn` to the make command line. See examples below.
 
 For more information about the optimizations, check out
-[CMSIS-NN documentation](https://github.com/ARM-software/CMSIS_5/blob/develop/CMSIS/NN/README.md)
+[CMSIS-NN documentation](https://github.com/ARM-software/CMSIS_5/blob/develop/CMSIS/NN/README.md).
 
-# Example 1
+By default CMSIS-NN is built by code that is downloaded to the TFLM tree.
+It also possible to build CMSIS-NN code from an external path by specifying
+CMSIS_PATH=<../path> and CMSIS_NN_PATH=<../path>. Note that both CMSIS_PATH and CMSIS_NN_PATH is needed
+since CMSIS-NN has a dependency to CMSIS-Core. As a third option CMSIS-NN can be provided manually as an external library.
+The examples below will illustrate this.
 
-A simple way to compile a binary with CMSIS-NN optimizations.
+# Example - FVP based on Arm Corstone-300 software.
+In this example, the kernel conv unit test is built. For more information about
+this specific target, check out the [Corstone-300 readme](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/cortex_m_corstone_300/README.md).
 
+Downloaded CMSIS-NN code is built:
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn \
-TARGET=sparkfun_edge person_detection_int8_bin
-```
-
-# Example 2 - MBED
-
-Using mbed you'll be able to compile for the many different targets supported by
-mbed. Here's an example on how to do that. Start by generating an mbed project.
-
-```
-make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn \
-generate_person_detection_int8_mbed_project
+make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 kernel_conv_test
 ```
 
-Go into the generated mbed project folder, currently:
-
+External CMSIS-NN code is built:
 ```
-tensorflow/lite/micro/tools/make/gen/linux_x86_64_default/prj/person_detection_int8/mbed
-```
-
-and setup mbed.
-
-```
-mbed new .
+make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn CMSIS_PATH=<external/path/to/cmsis/> CMSIS_NN_PATH=<external/path/to/cmsis-nn/>  TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 kernel_conv_test
 ```
 
-Note: Mbed has a dependency to an old version of arm_math.h. Therefore you need
-to copy the newer version as follows:
-
+External CMSIS-NN library is linked in:
 ```
-cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/DSP/Include/\
-arm_math.h mbed-os/cmsis/TARGET_CORTEX_M/arm_math.h
+make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn CMSIS_NN_LIBS=<path/to/cmsis-nn.a> CMSIS_PATH=<path/to/cmsis/> TARGET=cortex_m_corstone_300 TARGET_ARCH=cortex-m55 kernel_conv_test
 ```
 
-There's also a dependency to an old cmsis_gcc.h, which you can fix with the
-following:
+Please note that performance and/or size might be affected when using an
+external CMSIS-NN library as different compiler options may have been used.
 
-```
-cp tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/Core/Include/\
-cmsis_gcc.h mbed-os/cmsis/TARGET_CORTEX_M/cmsis_gcc.h
-```
-
-This issue will be resolved soon.
-
-Now type:
-
-```
-mbed compile -m DISCO_F746NG -t GCC_ARM
-```
-
-and that gives you a binary for the DISCO_F746NG with CMSIS-NN optimized
-kernels.
+Also note that if specifying CMSIS_NN_LIBS but not CMSIS_PATH and or CMSIS_NN_PATH, headers and
+system/startup code from the default downloaded path of CMSIS would be used.
+So CMSIS_NN_LIBS, CMSIS_NN_PATH and CMSIS_PATH should have the same base path and if not there will be a build error.

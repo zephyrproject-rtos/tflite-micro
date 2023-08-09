@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,6 @@
 
 # ARM Cortex M makefile targeted for a FVP based on Arm Corstone-300 software.
 # For more info see: tensorflow/lite/micro/cortex_m_corstone_300/README.md
-
-# TODO(#193): Remove this.
-CORE_OPTIMIZATION_LEVEL := -O2
 
 export PATH := $(MAKEFILE_DIR)/downloads/corstone300/models/Linux64_GCC-6.4:$(PATH)
 DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/corstone_300_download.sh ${MAKEFILE_DIR}/downloads)
@@ -100,13 +97,14 @@ ifeq ($(TOOLCHAIN), armclang)
   FLAGS_ARMC = \
     --target=arm-arm-none-eabi \
     -Wno-unused-private-field \
-    -mcpu=$(MCPU_OPTION)
+    -mcpu=$(MCPU_OPTION) \
+    -ffp-mode=full
 
   # Pass comma separated linker options to armlink
   ARMC6_LDFLAGS += -Wl,--strict,--summary_stderr,--info,summarysizes,--map
   ARMC6_LDFLAGS += -Wl,--load_addr_map_info,--xref,--callgraph,--symbols
   ARMC6_LDFLAGS += -Wl,--info,sizes,--info,totals,--info,unused,--info,veneers
-  ARMC6_LDFLAGS += -Wl,--list=${TENSORFLOW_ROOT}$(MAKEFILE_DIR)/gen/$(TARGET).map
+  ARMC6_LDFLAGS += -Wl,--list=${TENSORFLOW_ROOT}gen/$(TARGET).map
   ARMC6_LDFLAGS += -Wl,--entry=Reset_Handler  --verbose
   ARMC6_LDFLAGS += -Wl,--scatter=$(ETHOS_U_CORE_PLATFORM)/platform.scatter
 
@@ -150,17 +148,16 @@ else ifeq ($(TOOLCHAIN), gcc)
   LDFLAGS += \
     --specs=nosys.specs \
     -T $(ETHOS_U_CORE_PLATFORM)/platform_parsed.ld \
-    -Wl,-Map=${TENSORFLOW_ROOT}$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref \
+    -Wl,-Map=${TENSORFLOW_ROOT}gen/$(TARGET).map,--cref \
     -Wl,--gc-sections \
     --entry Reset_Handler
+
+  ldflags_to_remove = -Wl,--fatal-warnings
+  LDFLAGS := $(filter-out $(ldflags_to_remove),$(LDFLAGS))
 
 else
   $(error "TOOLCHAIN=$(TOOLCHAIN) is not supported.")
 endif
-
-# TODO(#47718): resolve warnings.
-OMIT_ERRORS = \
-  -Wno-implicit-fallthrough
 
 PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
@@ -168,7 +165,6 @@ PLATFORM_FLAGS = \
   -mfloat-abi=$(FLOAT) \
   -funsigned-char \
   -mlittle-endian \
-  ${OMIT_ERRORS} \
   -fomit-frame-pointer \
   -MD
 
@@ -180,11 +176,15 @@ CXXFLAGS += -D$(ARM_CPU)$(CMSIS_ARM_FEATURES)
 CCFLAGS += -D$(ARM_CPU)$(CMSIS_ARM_FEATURES)
 
 # For Ethos-U Core Driver. Header file name is depending on target architecture.
-CXXFLAGS += -DCMSIS_DEVICE_ARM_CORTEX_M_XX_HEADER_FILE=\"$(ARM_CPU).h\"
+CXXFLAGS += -DCMSIS_DEVICE_ARM_CORTEX_M_XX_HEADER_FILE=\"$(ARM_CPU)$(CMSIS_ARM_FEATURES).h\"
 
 THIRD_PARTY_CC_SRCS += \
   $(ETHOS_U_CORE_PLATFORM)/retarget.c \
   $(ETHOS_U_CORE_PLATFORM)/uart.c
+
+ifeq ($(CO_PROCESSOR), ethos_u)
+  ETHOSU_ARCH=u55
+endif
 
 CMSIS_DEFAULT_DOWNLOAD_PATH := $(MAKEFILE_DIR)/downloads/cmsis
 CMSIS_PATH := $(CMSIS_DEFAULT_DOWNLOAD_PATH)
@@ -195,20 +195,10 @@ INCLUDES += \
   -I$(CMSIS_PATH)/Device/ARM/$(ARM_CPU)/Include \
   -I$(CMSIS_PATH)/CMSIS/Core/Include
 
-# TODO(#47070): Examine why some tests fail here.
+# TODO(#274): Examine why some tests fail here.
 EXCLUDED_TESTS := \
-  tensorflow/lite/micro/micro_interpreter_test.cc \
-  tensorflow/lite/micro/micro_allocator_test.cc \
-  tensorflow/lite/micro/memory_helpers_test.cc \
-  tensorflow/lite/micro/micro_error_reporter_test.cc \
-  tensorflow/lite/micro/output_handler_test.cc \
-  tensorflow/lite/micro/memory_arena_threshold_test.cc \
-  tensorflow/lite/micro/recording_micro_allocator_test.cc \
-  tensorflow/lite/micro/kernels/circular_buffer_test.cc
+  tensorflow/lite/micro/memory_arena_threshold_test.cc  \
+  tensorflow/lite/micro/recording_micro_allocator_test.cc
 MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
-EXCLUDED_EXAMPLE_TESTS := \
-  tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
-  tensorflow/lite/micro/examples/micro_speech/Makefile.inc
-MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 
 TEST_SCRIPT := tensorflow/lite/micro/testing/test_with_arm_corstone_300.sh

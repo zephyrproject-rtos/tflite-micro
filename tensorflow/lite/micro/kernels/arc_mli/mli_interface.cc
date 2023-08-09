@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <math.h>
 
+#include "tensorflow/lite/micro/micro_log.h"
+
 namespace tflite {
 namespace ops {
 namespace micro {
 
+#ifndef MLI_2_0
 template <>
 int8_t* MliTensorInterface::Data<int8_t>(void) {
   TFLITE_DCHECK(tensor_->el_type == MLI_EL_ASYM_I8);
@@ -141,9 +144,11 @@ void MliTensorInterface::SetElType(TfLiteType type) {
   } else if (type == kTfLiteInt32) {
     *this->ElType() = MLI_EL_ASYM_I32;
   } else {
-    TF_LITE_FATAL("Wrong data type. Expected int8_t or int32_t.");
+    MicroPrintf("Wrong data type. Expected int8_t or int32_t.");
+    TFLITE_ABORT;
   }
 }
+#endif
 
 }  // namespace micro
 }  // namespace ops

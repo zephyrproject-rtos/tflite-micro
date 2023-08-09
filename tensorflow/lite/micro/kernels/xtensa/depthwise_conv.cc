@@ -1,3 +1,4 @@
+
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,17 +27,23 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/kernels/xtensa/fixedpoint_utils.h"
 #include "tensorflow/lite/micro/kernels/xtensa/xtensa.h"
 #include "tensorflow/lite/micro/kernels/xtensa/xtensa_depthwise_conv.h"
+#include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
 namespace {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  return context->AllocatePersistentBuffer(context,
-                                           sizeof(XtensaDepthwiseConvOpData));
+  void* data = context->AllocatePersistentBuffer(
+      context, sizeof(XtensaDepthwiseConvOpData));
+#if defined(VISION_P6)
+  if (InitXtensaContext()) {
+    return nullptr;
+  }
+#endif  // defined(VISION_P6)
+  return data;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -44,7 +51,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 #if defined(HIFI4) || defined(HIFI5)
   TF_LITE_ENSURE_OK(context, DepthwiseConvPrepareHifi(context, node));
-#endif  // defined(FUISON_F1) || defined(HIFI5)
+#endif  // defined(HIFI4) || defined(HIFI5)
+
+#if defined(VISION_P6)
+  TF_LITE_ENSURE_OK(context, DepthwiseConvPrepareVision(context, node));
+#endif  // VISION_P6
   return kTfLiteOk;
 }
 
@@ -67,68 +78,45 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           ? tflite::micro::GetEvalInput(context, node, kDepthwiseConvBiasTensor)
           : nullptr;
 
-#if defined(HIFIMINI)
-  // Handle special case for streaming model.
-  int* input_dims = input->dims->data;
-  int* filter_dims = filter->dims->data;
-  if (input_dims[0] == 1 && input_dims[1] == 4 && input_dims[2] == 1 &&
-      input_dims[3] == 32 && filter_dims[0] == 1 && filter_dims[1] == 4 &&
-      filter_dims[2] == 1 && filter_dims[3] == 32) {
-    DepthwiseConv4x32MatchingInputAndFilterHifiMini(
-        -op_data.reference_op_data.input_zero_point,
-        op_data.reference_op_data.output_zero_point,
-        std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max(),
-        op_data.reference_op_data.per_channel_output_multiplier,
-        op_data.reference_op_data.per_channel_output_shift,
-        tflite::micro::GetTensorShape(input),
-        tflite::micro::GetTensorData<int8_t>(input),
-        tflite::micro::GetTensorShape(filter),
-        tflite::micro::GetTensorData<int8_t>(filter),
-        tflite::micro::GetTensorShape(bias),
-        tflite::micro::GetTensorData<int32_t>(bias),
-        tflite::micro::GetTensorShape(output),
-        tflite::micro::GetTensorData<int8_t>(output));
-    return kTfLiteOk;
-  }
-#endif  // defined(HIFIMINI)
+  TfLiteEvalTensor filter_int8 = tflite::micro::MakeUnpackedInt4Tensor(
+      context, op_data.reference_op_data.filter_buffer_index, filter);
 
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteInt8: {
-#if defined(HIFIMINI)
-      DepthwiseConvEvalHifiMini(
-          DepthwiseConvParamsQuantized(params, op_data.reference_op_data),
-          op_data.reference_op_data.per_channel_output_multiplier,
-          op_data.reference_op_data.per_channel_output_shift,
-          tflite::micro::GetTensorShape(input),
-          tflite::micro::GetTensorData<int8_t>(input),
-          tflite::micro::GetTensorShape(filter),
-          tflite::micro::GetTensorData<int8_t>(filter),
-          tflite::micro::GetTensorShape(bias),
-          tflite::micro::GetTensorData<int32_t>(bias),
-          tflite::micro::GetTensorShape(output),
-          tflite::micro::GetTensorData<int8_t>(output));
-#elif defined(HIFI4) || defined(HIFI5)
-      DepthwiseConvEvalHifi(context, node, params, op_data, input, filter, bias,
-                            output);
+      switch (filter_int8.type) {
+        case kTfLiteInt8: {
+#if defined(HIFI4) || defined(HIFI5)
+          DepthwiseConvEvalHifi(context, node, params, op_data, input,
+                                &filter_int8, bias, output);
+#elif defined(VISION_P6)
+          DepthwiseConvEvalVision(context, node, params, op_data, input,
+                                  &filter_int8, bias, output);
 #else
-      reference_integer_ops::DepthwiseConvPerChannel(
-          DepthwiseConvParamsQuantized(params, op_data.reference_op_data),
-          op_data.reference_op_data.per_channel_output_multiplier,
-          op_data.reference_op_data.per_channel_output_shift,
-          tflite::micro::GetTensorShape(input),
-          tflite::micro::GetTensorData<int8_t>(input),
-          tflite::micro::GetTensorShape(filter),
-          tflite::micro::GetTensorData<int8_t>(filter),
-          tflite::micro::GetTensorShape(bias),
-          tflite::micro::GetTensorData<int32_t>(bias),
-          tflite::micro::GetTensorShape(output),
-          tflite::micro::GetTensorData<int8_t>(output));
-#endif
+          reference_integer_ops::DepthwiseConvPerChannel(
+              DepthwiseConvParamsQuantized(params, op_data.reference_op_data),
+              op_data.reference_op_data.per_channel_output_multiplier,
+              op_data.reference_op_data.per_channel_output_shift,
+              tflite::micro::GetTensorShape(input),
+              tflite::micro::GetTensorData<int8_t>(input),
+              tflite::micro::GetTensorShape(filter),
+              tflite::micro::GetTensorData<int8_t>(&filter_int8),
+              tflite::micro::GetTensorShape(bias),
+              tflite::micro::GetOptionalTensorData<int32_t>(bias),
+              tflite::micro::GetTensorShape(output),
+              tflite::micro::GetTensorData<int8_t>(output));
+#endif  // defined(HIFI4) || defined(HIFI5)
+          break;
+        }
+        default:
+          MicroPrintf("Filter type %s (%d) not supported.",
+                      TfLiteTypeGetName(filter->type), filter->type);
+          return kTfLiteError;
+      }
       break;
     }
     default:
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(input->type), input->type);
+      MicroPrintf("Type %s (%d) not supported.", TfLiteTypeGetName(input->type),
+                  input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -136,15 +124,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace
 
-TfLiteRegistration Register_DEPTHWISE_CONV_2D() {
-  return {/*init=*/Init,
-          /*free=*/nullptr,
-          /*prepare=*/Prepare,
-          /*invoke=*/Eval,
-          /*profiling_string=*/nullptr,
-          /*builtin_code=*/0,
-          /*custom_name=*/nullptr,
-          /*version=*/0};
+TFLMRegistration Register_DEPTHWISE_CONV_2D() {
+  return tflite::micro::RegisterOp(Init, Prepare, Eval);
 }
 
 }  // namespace tflite

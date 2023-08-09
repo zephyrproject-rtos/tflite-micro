@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,9 +54,13 @@ TfLiteStatus PoolingPrepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpDataPooling* data = static_cast<OpDataPooling*>(node->user_data);
 
-  const TfLiteTensor* input = GetInput(context, node, kPoolingInputTensor);
+  MicroContext* micro_context = GetMicroContext(context);
+
+  TfLiteTensor* input =
+      micro_context->AllocateTempInputTensor(node, kPoolingInputTensor);
   TF_LITE_ENSURE(context, input != nullptr);
-  TfLiteTensor* output = GetOutput(context, node, kPoolingOutputTensor);
+  TfLiteTensor* output =
+      micro_context->AllocateTempOutputTensor(node, kPoolingOutputTensor);
   TF_LITE_ENSURE(context, output != nullptr);
 
   TF_LITE_ENSURE_STATUS(
@@ -65,11 +69,18 @@ TfLiteStatus PoolingPrepare(TfLiteContext* context, TfLiteNode* node) {
   if (input->type == kTfLiteFloat32) {
     CalculateActivationRange(params->activation, &data->activation_min_f32,
                              &data->activation_max_f32);
-  } else if (input->type == kTfLiteInt8) {
+  } else if (input->type == kTfLiteInt8 || input->type == kTfLiteInt16) {
     CalculateActivationRangeQuantized(context, params->activation, output,
                                       &data->activation_min,
                                       &data->activation_max);
+  } else {
+    MicroPrintf("Type %s (%d) not supported.", TfLiteTypeGetName(input->type),
+                input->type);
+    return kTfLiteError;
   }
+
+  micro_context->DeallocateTempTfLiteTensor(input);
+  micro_context->DeallocateTempTfLiteTensor(output);
 
   return kTfLiteOk;
 }
@@ -95,30 +106,6 @@ void AveragePoolingEvalFloat(const TfLiteContext* context,
                              tflite::micro::GetTensorData<float>(output));
 }
 
-void AveragePoolingEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
-                                 const TfLitePoolParams* params,
-                                 const OpDataPooling* data,
-                                 const TfLiteEvalTensor* input,
-                                 TfLiteEvalTensor* output) {
-  TFLITE_DCHECK(input->type == kTfLiteInt8);
-
-  PoolParams op_params;
-  op_params.stride_height = params->stride_height;
-  op_params.stride_width = params->stride_width;
-  op_params.filter_height = params->filter_height;
-  op_params.filter_width = params->filter_width;
-  op_params.padding_values.height = data->padding.height;
-  op_params.padding_values.width = data->padding.width;
-  op_params.quantized_activation_min = data->activation_min;
-  op_params.quantized_activation_max = data->activation_max;
-
-  reference_integer_ops::AveragePool(
-      op_params, tflite::micro::GetTensorShape(input),
-      tflite::micro::GetTensorData<int8_t>(input),
-      tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<int8_t>(output));
-}
-
 void MaxPoolingEvalFloat(TfLiteContext* context, TfLiteNode* node,
                          TfLitePoolParams* params, const OpDataPooling* data,
                          const TfLiteEvalTensor* input,
@@ -136,28 +123,6 @@ void MaxPoolingEvalFloat(TfLiteContext* context, TfLiteNode* node,
                          tflite::micro::GetTensorData<float>(input),
                          tflite::micro::GetTensorShape(output),
                          tflite::micro::GetTensorData<float>(output));
-}
-
-void MaxPoolingEvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                             TfLitePoolParams* params,
-                             const OpDataPooling* data,
-                             const TfLiteEvalTensor* input,
-                             TfLiteEvalTensor* output) {
-  tflite::PoolParams op_params;
-  op_params.stride_height = params->stride_height;
-  op_params.stride_width = params->stride_width;
-  op_params.filter_height = params->filter_height;
-  op_params.filter_width = params->filter_width;
-  op_params.padding_values.height = data->padding.height;
-  op_params.padding_values.width = data->padding.width;
-  op_params.quantized_activation_min = data->activation_min;
-  op_params.quantized_activation_max = data->activation_max;
-
-  reference_integer_ops::MaxPool(op_params,
-                                 tflite::micro::GetTensorShape(input),
-                                 tflite::micro::GetTensorData<int8_t>(input),
-                                 tflite::micro::GetTensorShape(output),
-                                 tflite::micro::GetTensorData<int8_t>(output));
 }
 
 }  // namespace tflite

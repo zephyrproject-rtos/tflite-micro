@@ -1,6 +1,3 @@
-*** Variables ***
-${UART}                       sysbus.cpu.uartSemihosting
-
 *** Keywords ***
 Teardown With Custom Message
     Test Teardown
@@ -12,14 +9,14 @@ Teardown With Custom Message
 Create Platform
     Execute Command           $logfile=@${UART_LOG}
     Execute Script            ${RESC}
-    Provides                  ready-platform
+    Provides                  ready-platform    Reexecution
 
 Test Binary
     [Arguments]               ${BIN}
     Requires                  ready-platform
     Execute Command           sysbus LoadELF ${BIN}
 
-    Create Terminal Tester    ${UART}  timeout=2
+    Create Terminal Tester    ${UART}  timeout=30
     Start Emulation
 
     Wait For Line On Uart     ${UART_LINE_ON_SUCCESS}

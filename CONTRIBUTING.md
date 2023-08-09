@@ -2,6 +2,7 @@
 emi-automated TOC generation with instructions from
 https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
 -->
+
 <!--ts-->
    * [How to Contribute](#how-to-contribute)
       * [Contributor License Agreement](#contributor-license-agreement)
@@ -13,7 +14,6 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
          * [Reference Kernel Implementations](#reference-kernel-implementations)
          * [Optimized Kernel Implementations](#optimized-kernel-implementations)
          * [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
-         * [New Features](#new-features)
    * [Development Workflow Notes](#development-workflow-notes)
       * [Initial Setup](#initial-setup)
       * [Before submitting your PR](#before-submitting-your-pr)
@@ -22,7 +22,7 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
       * [Python notes](#python-notes)
    * [Continuous Integration System](#continuous-integration-system)
 
-<!-- Added by: advaitjain, at: Fri 09 Apr 2021 12:51:55 PM PDT -->
+<!-- Added by: advaitjain, at: Thu 16 Sep 2021 11:43:42 AM PDT -->
 
 <!--te-->
 
@@ -96,16 +96,12 @@ We strongly recommend that contributors:
 
     *   [Write Good Pull Request Descriptions](https://google.github.io/eng-practices/review/developer/cl-descriptions.html)
 
-        *   We require that all PR descriptions link to the github issue created
-            in step 1.
+        *   We require that all PR descriptions link to the GitHub issue
+            created in step 1 via the text `BUG=#nn` on a line by itself [^1]. This
+            is enforced by CI.
 
-        *   While github offers flexibility in linking
-            [commits and issues](https://github.blog/2011-04-09-issues-2-0-the-next-generation/#commits-issues),
-            we require that the PR description have a separate line with
-            `BUG=#nn`.
-
-        *   We will be adding internal checks that automate this requirement by
-            matching the PR description to the regexp: `(Fixes|Issue) #`
+            [^1]: This despite GitHub having additional forms of
+            [linked references](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/autolinked-references-and-urls).
 
 1.  Unit tests are critical to a healthy codebase. PRs without tests should be
     the exception rather than the norm. And contributions to improve, simplify,
@@ -123,8 +119,7 @@ Pull requests that fix bugs are always welcome and often uncontroversial, unless
 there is a conflict between different requirements from the platform, or if
 fixing a bug needs a bigger architectural change.
 
-1.  Create a
-    [TF Lite Micro Github issue](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
+1.  Create a [Github issue](https://github.com/tensorflow/tflite-micro/issues/new/choose)
     to determine the scope of the bug fix.
 1.  Send a PR (if that is determined to be the best path forward).
 1.  Bugfix PRs should be accompanied by a test case that fails prior to the fix
@@ -134,73 +129,20 @@ fixing a bug needs a bigger architectural change.
 ### Reference Kernel Implementations
 
 Pull requests that port reference kernels from TF Lite Mobile to TF Lite Micro
-are welcome once we have enough context from the contributor on why the
-additional kernel is needed.
+are welcome once we have context from the contributor on why the additional
+kernel is needed.
 
-1.  Please create a
-    [TF Lite Micro Github issue](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
-    before starting on any such PRs with as much context as possible, such as:
-
-    *   What is the model architecture?
-    *   What is the application that you are targetting?
-    *   What embedded target(s) are you planning to run on?
-    *   Motivate your use-case and the need for adding support for this
-        additional OP.
-
-1.  In the interest of having
-    [small pull requests](https://google.github.io/eng-practices/review/developer/small-cls.html),
-    limit each pull request to porting a single kernel (and the corresponding
-    test).
-
-1.  TODO(b/165627437): Create and link to a guide to porting reference ops.
+Please see the [reference kernel porting guide](tensorflow/lite/micro/docs/porting_reference_ops.md)
+for more details of that process.
 
 ### Optimized Kernel Implementations
-
-In order to have the TFLM codebase be a central repository of optimized kernel
-implementations, we would like to make some improvements to the current
-infrastructure to enable adding and maintaining optimized kernel implementations
-in a scalable way.
-
-Until that work is complete, we are requesting a ***pause*** on contributions that
-add new optimized kernel implementations. We plan to make these improvements by
-October 2020 and will provide additional guidelines at that time.
-
-*   If you would like to have an exception to this pause, with the understanding
-    that your optimized kernels will break as we improve the underlying
-    framework, then please send an email to the [SIG Micro email
-    group](https://groups.google.com/a/tensorflow.org/g/micro) to figure out
-    a middle ground.
-
-*   Every optimized kernel directory must have a README.md with the github IDs
-    of the maintainers and any other relevant documentation. PRs that add
-    maintainers to the existing optimized kernels are always welcome.
+Please see the [optimized kernel implementations guide](tensorflow/lite/micro/docs/optimized_kernel_implementations.md).
 
 ### New Target / Platform / IDE / Examples
 
-As discussed in the
-[SIG-micro Aug 12, 2020 meeting](http://doc/1YHq9rmhrOUdcZnrEnVCWvd87s2wQbq4z17HbeRl-DBc),
-we are currently ***pausing*** accepting pull requests that add new targets,
-platforms, IDE integration or examples while we revisit some of the
-infrastructure to enable us to make this process easier and more scalable.
+Please see the [new platform support guide](tensorflow/lite/micro/docs/new_platform_support.md)
+for documentation on how to add TFLM support for your particular platform.
 
-In the meantime, snapshotting and/or forking the tensorflow repo could be a
-viable way to prototype platform support.
-
-Having said that, we still invite
-[TF Lite Micro Github issues](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
-on this topic as we would like to enable such integration in the future.
-
-### New Features
-
-As discussed in the
-[SIG-micro Aug 12, 2020 meeting](http://doc/1YHq9rmhrOUdcZnrEnVCWvd87s2wQbq4z17HbeRl-DBc),
-we are currently ***pausing*** accepting pull requests that add new features while
-we revisit some of the infrastructure to enable us to make this process easier
-and more scalable.
-
-Having said that, we still invite feature requests via
-[TF Lite Micro Github issues](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
-to determine if the requested feature aligns with the TFLM roadmap.
 
 # Development Workflow Notes
 
@@ -214,18 +156,26 @@ Below are some tips that might be useful and improve the development experience.
 * Code search the [TfLite Micro codebase](https://sourcegraph.com/github.com/tensorflow/tflite-micro@main)
   on Sourcegraph. And optionally install the [plugin that enables GitHub integration](https://docs.sourcegraph.com/integration/github#github-integration-with-sourcegraph).
 
-* Install [bazel](ci/install_bazel.sh) and [buildifier](ci/install_buildifier.sh).
+* Install [bazel](ci/install_bazelisk.sh) and [buildifier](ci/install_buildifier.sh).
 
 * Install the latest clang and clang-format. For example, [here](ci/Dockerfile.micro)
   is the what we do for the TFLM continuous integration Docker container.
 
 * Get a copy of [cpplint](https://github.com/google/styleguide/tree/gh-pages/cpplint)
+  or install it:
+
+* Install Pillow and Wave.  For example, [here](ci/Dockerfile.micro) is what we
+  do for the TFLM continuous integration Docker container.
+
+  ```
+  pip install cpplint
+  ```
 
 * [yapf](https://github.com/google/yapf/) should be used for formatting Python
   code. For example:
 
   ```
-  pip3 install yapf
+  pip install yapf
   yapf log_parser.py -i --style='{based_on_style: pep8, indent_width: 2}'
   ```
 
@@ -247,13 +197,13 @@ Below are some tips that might be useful and improve the development experience.
 1.  Make sure your code is lint-free.
 
     ```
-    cpplint.py `git ls-files -m`
+    cpplint `git ls-files -m`
     ```
 
 1.  Run all the tests for x86, and any other platform that you are modifying.
 
     ```
-    tensorflow/lite/micro/tools/ci_build/test_x86.sh
+    tensorflow/lite/micro/tools/ci_build/test_x86_default.sh
     ```
 
     Please check the READMEs in the optimized kernel directories for specific
@@ -277,7 +227,7 @@ Below are some tips that might be useful and improve the development experience.
     *   Always merge upstream/main (***do not rebase***) and no force-pushes
         please.
 
-    *   Having an extra merge commit it ok as the github review tool handles
+    *   Having an extra merge commit is ok as the github review tool handles
         that gracefully.
 
     Assuming that you forked tensorflow and added a remote called upstream with:
@@ -328,7 +278,7 @@ Below are some tips that might be useful and improve the development experience.
     And a sketch of the steps:
 
     ```
-    git remote add <remote_name> git@github.com:<PR author>/tensorflow.git
+    git remote add <remote_name> git@github.com:<PR author>/tflite-micro.git
     git fetch <remote_name>
 
     git checkout -b <local-branch-name> <remote_name>/<PR branch name>
@@ -346,8 +296,7 @@ Below are some tips that might be useful and improve the development experience.
 
 ## Python notes
 
-*   [TensorFlow guide](https://www.tensorflow.org/community/contribute/code_style#python_style)
-    for Python development
+*   [TFLM Python guide](docs/python.md)
 
 # Continuous Integration System
   * Some [additional documentation](docs/continuous_integration.md) on the TFLM CI.

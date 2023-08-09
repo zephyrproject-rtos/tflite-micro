@@ -1,4 +1,3 @@
-
 name: RISC-V
 
 # https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#onschedule
@@ -20,7 +19,24 @@ jobs:
 
     name: RISC-V Continuous Builds
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - uses: actions/checkout@v3
       - name: Test
-        run: |
-          tensorflow/lite/micro/tools/ci_build/test_riscv.sh
+        uses: docker://ghcr.io/tflm-bot/tflm-ci:latest
+        with:
+          args: /bin/sh -c tensorflow/lite/micro/tools/ci_build/test_riscv.sh
+
+  issue-on-error:
+    needs: [riscv_daily]
+    if: ${{ always() && contains(needs.*.result, 'failure') }}
+    uses: ./.github/workflows/issue_on_error.yml
+    with:
+      repo: ${{ github.repository }}
+      workflow: ${{ github.workflow }}
+      run_id: ${{ github.run_id }}
+      run_number: ${{ github.run_number }}
+      flag_label: ci:bot_issue
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}

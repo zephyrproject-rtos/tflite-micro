@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
@@ -32,9 +31,8 @@ void ValidateArgMinMaxGoldens(TfLiteTensor* tensors, int tensors_size,
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration = using_min
-                                              ? ops::micro::Register_ARG_MIN()
-                                              : ops::micro::Register_ARG_MAX();
+  const TFLMRegistration registration =
+      using_min ? Register_ARG_MIN() : Register_ARG_MAX();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
                              /*builtin_data=*/nullptr);
@@ -127,44 +125,6 @@ TF_LITE_MICRO_TEST(GetMinArgFloat) {
   tflite::testing::TestArgMinMaxFloat(input_dims, input_values, axis_dims,
                                       axis_values, output_dims, output_data,
                                       goldens, true);
-}
-
-TF_LITE_MICRO_TEST(GetMaxArgUInt8) {
-  int32_t output_data[1];
-  const int input_size = 4;
-  int input_dims[] = {4, 1, 1, 1, input_size};
-  const float input_values[] = {1, 9, 7, 3};
-  int axis_dims[] = {3, 1, 1, 1};
-  const int32_t axis_values[] = {3};
-  int output_dims[] = {3, 1, 1, 1};
-  const int32_t goldens[] = {1};
-
-  float input_scale = 0.5;
-  int input_zero_point = 124;
-  uint8_t input_quantized[input_size];
-
-  tflite::testing::TestArgMinMaxQuantized(
-      input_dims, input_values, input_quantized, input_scale, input_zero_point,
-      axis_dims, axis_values, output_dims, output_data, goldens, false);
-}
-
-TF_LITE_MICRO_TEST(GetMinArgUInt8) {
-  int32_t output_data[1];
-  const int input_size = 4;
-  int input_dims[] = {4, 1, 1, 1, input_size};
-  const float input_values[] = {1, 9, 7, 3};
-  int axis_dims[] = {3, 1, 1, 1};
-  const int32_t axis_values[] = {3};
-  int output_dims[] = {3, 1, 1, 1};
-  const int32_t goldens[] = {0};
-
-  float input_scale = 0.5;
-  int input_zero_point = 124;
-  uint8_t input_quantized[input_size];
-
-  tflite::testing::TestArgMinMaxQuantized(
-      input_dims, input_values, input_quantized, input_scale, input_zero_point,
-      axis_dims, axis_values, output_dims, output_data, goldens, true);
 }
 
 TF_LITE_MICRO_TEST(GetMaxArgInt8) {

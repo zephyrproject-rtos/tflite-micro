@@ -16,7 +16,8 @@
 #
 # Called with following arguments:
 # 1 - Path to the downloads folder which is typically
-#     tensorflow/lite/micro/tools/make/downloads
+#     ${TENSORFLOW_ROOT}/tensorflow/lite/micro/tools/make/downloads
+# 2 - (optional) TENSORFLOW_ROOT: path to root of the TFLM tree (relative to directory from where the script is called).
 #
 # This script is called from the Makefile and uses the following convention to
 # enable determination of sucess/failure:
@@ -31,11 +32,7 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR=${SCRIPT_DIR}/../../../../..
-cd "${ROOT_DIR}"
-
-source tensorflow/lite/micro/tools/make/bash_helpers.sh
+source ${2}tensorflow/lite/micro/tools/make/bash_helpers.sh
 
 DOWNLOADS_DIR=${1}
 if [ ! -d ${DOWNLOADS_DIR} ]; then
@@ -57,9 +54,9 @@ DOWNLOADED_FLATBUFFERS_PATH=${DOWNLOADS_DIR}/flatbuffers
 if [ -d ${DOWNLOADED_FLATBUFFERS_PATH} ]; then
   echo >&2 "${DOWNLOADED_FLATBUFFERS_PATH} already exists, skipping the download."
 else
-  ZIP_PREFIX="dca12522a9f9e37f126ab925fd385c807ab4f84e"
+  ZIP_PREFIX="a66de58af9565586832c276fbb4251fc416bf07f"
   FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/${ZIP_PREFIX}.zip"
-  FLATBUFFERS_MD5="aa9adc93eb9b33fa1a2a90969e48baee"
+  FLATBUFFERS_MD5="51a7a96747e1c33eb4aac6d52513a02f"
 
   TEMPDIR="$(mktemp -d)"
   TEMPFILE="${TEMPDIR}/${ZIP_PREFIX}.zip"
@@ -72,7 +69,9 @@ else
 
   pushd ${DOWNLOADED_FLATBUFFERS_PATH} > /dev/null
   delete_build_files ${DOWNLOADED_FLATBUFFERS_PATH}
-  apply_patch_to_folder ./ ../../flatbuffers.patch
+  create_git_repo ./
+  apply_patch_to_folder ./ ../../flatbuffers.patch "TFLM patch"
+
   popd > /dev/null
 fi
 

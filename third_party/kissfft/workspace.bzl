@@ -5,11 +5,11 @@ load("//third_party:repo.bzl", "tf_http_archive")
 def repo():
     tf_http_archive(
         name = "kissfft",
-        strip_prefix = "kissfft-36dbc057604f00aacfc0288ddad57e3b21cfc1b8",
-        sha256 = "42b7ef406d5aa2d57a7b3b56fc44e8ad3011581692458a69958a911071efdcf2",
+        patch_file = "//third_party/kissfft:kissfft.patch",
+        strip_prefix = "kissfft-130",
+        sha256 = "ac2259f84e372a582270ed7c7b709d02e6ca9c7206e40bb58de6ef77f6474872",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/mborgerding/kissfft/archive/36dbc057604f00aacfc0288ddad57e3b21cfc1b8.tar.gz",
-            "https://github.com/mborgerding/kissfft/archive/36dbc057604f00aacfc0288ddad57e3b21cfc1b8.tar.gz",
+            "https://github.com/mborgerding/kissfft/archive/refs/tags/v130.zip",
         ],
         build_file = "//third_party/kissfft:BUILD.bazel",
     )

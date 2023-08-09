@@ -69,15 +69,8 @@ TfLiteStatus ConvReferenceEvalInt8(TfLiteContext* context, TfLiteNode* node) {
 // TODO(b/189981943): This variant can be used for a smaller binary
 // since the optimized conv implementation currently adds a lot to
 // the binary size (~30KB to text section).
-TfLiteRegistration Register_CONV_2D_INT8REF() {
-  return {/*init=*/Init,
-          /*free=*/nullptr,
-          /*prepare=*/ConvPrepare,
-          /*invoke=*/ConvReferenceEvalInt8,
-          /*profiling_string=*/nullptr,
-          /*builtin_code=*/0,
-          /*custom_name=*/nullptr,
-          /*version=*/0};
+TFLMRegistration Register_CONV_2D_INT8REF() {
+  return tflite::micro::RegisterOp(Init, ConvPrepare, ConvReferenceEvalInt8);
 }
 
 }  // namespace tflite

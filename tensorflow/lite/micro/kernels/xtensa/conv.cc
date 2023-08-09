@@ -25,16 +25,24 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/kernels/xtensa/fixedpoint_utils.h"
 #include "tensorflow/lite/micro/kernels/xtensa/xtensa.h"
 #include "tensorflow/lite/micro/kernels/xtensa/xtensa_conv.h"
+#include "tensorflow/lite/micro/micro_log.h"
 
 namespace tflite {
 namespace {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  return context->AllocatePersistentBuffer(context, sizeof(XtensaConvOpData));
+  void* data =
+      context->AllocatePersistentBuffer(context, sizeof(XtensaConvOpData));
+#if defined(VISION_P6)
+  if (InitXtensaContext()) {
+    return nullptr;
+  }
+#endif  // defined(VISION_P6)
+
+  return data;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -43,6 +51,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(HIFI4) || defined(HIFI5)
   TF_LITE_ENSURE_OK(context, ConvPrepareHifi(context, node));
 #endif
+#if defined(VISION_P6)
+  TF_LITE_ENSURE_OK(context, ConvPrepareVision(context, node));
+#endif  // VISION_P6
   return kTfLiteOk;
 }
 
@@ -53,7 +64,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteEvalTensor* input =
       tflite::micro::GetEvalInput(context, node, kConvInputTensor);
 
-#if defined(HIFIMINI) || defined(HIFI4) || defined(HIFI5)
   const auto& params =
       *(reinterpret_cast<TfLiteConvParams*>(node->builtin_data));
   const auto& op_data = *(reinterpret_cast<XtensaConvOpData*>(node->user_data));
@@ -66,72 +76,65 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       (NumInputs(node) == 3)
           ? tflite::micro::GetEvalInput(context, node, kConvBiasTensor)
           : nullptr;
-#endif
 
-#if defined(HIFIMINI)
-  int* input_dims = input->dims->data;
-  int* filter_dims = filter->dims->data;
-  if (input_dims[0] == 1 && input_dims[1] == 1 && input_dims[2] == 1 &&
-      input_dims[3] == 32 && filter_dims[0] == 32 && filter_dims[1] == 1 &&
-      filter_dims[2] == 1 && filter_dims[3] == 32) {
-    Conv1x32Input32x32FilterHifiMini(
-        -op_data.reference_op_data.input_zero_point,
-        op_data.reference_op_data.output_zero_point,
-        op_data.reference_op_data.output_activation_min,
-        op_data.reference_op_data.output_activation_max,
-        op_data.reference_op_data.per_channel_output_multiplier,
-        op_data.reference_op_data.per_channel_output_shift,
-        tflite::micro::GetTensorShape(input),
-        tflite::micro::GetTensorData<int8_t>(input),
-        tflite::micro::GetTensorShape(filter),
-        tflite::micro::GetTensorData<int8_t>(filter),
-        tflite::micro::GetTensorShape(bias),
-        tflite::micro::GetTensorData<int32_t>(bias),
-        tflite::micro::GetTensorShape(output),
-        tflite::micro::GetTensorData<int8_t>(output));
-    return kTfLiteOk;
-  }
-#endif  // defined(HIFIMINI)
+  TfLiteEvalTensor filter_int8 = tflite::micro::MakeUnpackedInt4Tensor(
+      context, op_data.reference_op_data.filter_buffer_index, filter);
 
   switch (input->type) {
     case kTfLiteInt8: {
-#if defined(HIFIMINI)
-      ConvEvalHifiMini(ConvParamsQuantized(params, op_data.reference_op_data),
-                       op_data.reference_op_data.per_channel_output_multiplier,
-                       op_data.reference_op_data.per_channel_output_shift,
-                       tflite::micro::GetTensorShape(input),
-                       tflite::micro::GetTensorData<int8_t>(input),
-                       tflite::micro::GetTensorShape(filter),
-                       tflite::micro::GetTensorData<int8_t>(filter),
-                       tflite::micro::GetTensorShape(bias),
-                       tflite::micro::GetTensorData<int32_t>(bias),
-                       tflite::micro::GetTensorShape(output),
-                       tflite::micro::GetTensorData<int8_t>(output));
-#elif defined(HIFI4) || defined(HIFI5)
-      ConvEvalHifi(context, node, params, op_data, input, filter, bias, output);
+      switch (filter_int8.type) {
+        case kTfLiteInt8: {
+#if defined(HIFI4) || defined(HIFI5)
+          ConvEvalHifi(context, node, params, op_data, input, &filter_int8,
+                       bias, output);
+#elif defined(VISION_P6)
+          return ConvEvalVision(context, node, params, op_data, input,
+                                &filter_int8, bias, output);
 #else
-      return ConvReferenceEvalInt8(context, node);
+          reference_integer_ops::ConvPerChannel(
+              ConvParamsQuantized(params, op_data.reference_op_data),
+              op_data.reference_op_data.per_channel_output_multiplier,
+              op_data.reference_op_data.per_channel_output_shift,
+              tflite::micro::GetTensorShape(input),
+              tflite::micro::GetTensorData<int8_t>(input),
+              tflite::micro::GetTensorShape(filter),
+              tflite::micro::GetTensorData<int8_t>(&filter_int8),
+              tflite::micro::GetTensorShape(bias),
+              tflite::micro::GetOptionalTensorData<int32_t>(bias),
+              tflite::micro::GetTensorShape(output),
+              tflite::micro::GetTensorData<int8_t>(output));
+          return kTfLiteOk;
 #endif
+          break;
+        }
+
+        default:
+          MicroPrintf("Filter type %s (%d) not supported.",
+                      TfLiteTypeGetName(filter->type), filter->type);
+          return kTfLiteError;
+      }
+      return kTfLiteOk;
+    }
+    case kTfLiteInt16: {
+#if defined(HIFI4)
+      ConvEvalHifi16(context, node, params, op_data, input, filter, bias,
+                     output);
+#else
+      return ConvReferenceEvalInt16(context, node);
+#endif  // defined(HIFI4)
       break;
     }
     default:
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(input->type), input->type);
+      MicroPrintf("Type %s (%d) not supported.", TfLiteTypeGetName(input->type),
+                  input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
 }
 }  // namespace
 
-TfLiteRegistration Register_CONV_2D() {
-  return {/*init=*/Init,
-          /*free=*/nullptr,
-          /*prepare=*/Prepare,
-          /*invoke=*/Eval,
-          /*profiling_string=*/nullptr,
-          /*builtin_code=*/0,
-          /*custom_name=*/nullptr,
-          /*version=*/0};
+TFLMRegistration Register_CONV_2D() {
+  return tflite::micro::RegisterOp(Init, Prepare, Eval);
 }
 
 }  // namespace tflite
